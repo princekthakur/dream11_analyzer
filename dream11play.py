@@ -1,133 +1,173 @@
 import streamlit as st
 import pandas as pd
-from itertools import combinations
 import numpy as np
+from itertools import combinations
 
 # ----------------------------
-# 1. STREAMLIT CONFIG
+# 1. CORE FUNCTIONS
 # ----------------------------
-st.set_page_config(page_title="Dream11 Optimizer", layout="wide")
-st.title("🎯 Dream11 Team Generator")
-
-# ----------------------------
-# 2. DATA PROCESSING
-# ----------------------------
-def process_data(uploaded_file):
-    df = pd.read_excel(uploaded_file)
-    players = []
-    
-    for _, row in df.iterrows():
-        players.append({
-            "name": row["Player Name"],
-            "role": classify_role(row["Role"]),
-            "is_captain": row.get("Captain", "") == "Yes",
-            "is_wicketkeeper": row.get("Wicketkeeper", "") == "Yes",
-            "team": row["Team"],
-            "bat_avg": np.random.randint(20,50) if "Batter" in str(row["Role"]) else 10,
-            "strike_rate": np.random.randint(110,150) if "Batter" in str(row["Role"]) else 0,
-            "bowl_avg": np.random.randint(15,30) if "Bowler" in str(row["Role"]) else 50,
-            "credits": assign_credits(row["Role"])
-        })
-    return players
-
 def classify_role(role_str):
-    if "Wicketkeeper" in str(role_str): return "WK"
-    elif "Batter" in str(role_str): return "BAT"
-    elif "Bowler" in str(role_str): return "BOWL"
-    elif "All-rounder" in str(role_str): return "AR"
+    """Robust role classification with fallback"""
+    if pd.isna(role_str):
+        return "UNK"
+    
+    role = str(role_str).lower()
+    if "wicket" in role:
+        return "WK"
+    elif "batter" in role or "bat" in role:
+        return "BAT"
+    elif "bowler" in role or "bowl" in role:
+        return "BOWL"
+    elif "all" in role or "rounder" in role:
+        return "AR"
     return "UNK"
 
-def assign_credits(role_str):
-    if "All-rounder" in str(role_str): return 9.0
-    elif "Batter" in str(role_str): return 8.5
-    elif "Bowler" in str(role_str): return 8.0
-    return 7.5
+def assign_credits(role):
+    """Dynamic credit assignment"""
+    return {
+        "WK": 8.5, "BAT": 8.5, 
+        "BOWL": 8.0, "AR": 9.0
+    }.get(role, 7.5)
+
+def calculate_scores(players):
+    """Generate realistic mock scores"""
+    for p in players:
+        if p["role"] == "BAT":
+            p["bat_score"] = np.random.normal(35, 10)
+            p["bowl_score"] = 0
+        elif p["role"] == "BOWL":
+            p["bowl_score"] = np.random.normal(25, 8)
+            p["bat_score"] = 0
+        else:  # AR/WK
+            p["bat_score"] = np.random.normal(25, 7)
+            p["bowl_score"] = np.random.normal(15, 5)
+        
+        p["score"] = (p["bat_score"] * 0.7) + (p["bowl_score"] * 0.5)
+        p["credits"] = assign_credits(p["role"])
 
 # ----------------------------
-# 3. PITCH ADJUSTMENTS
+# 2. OPTIMIZATION ENGINE
 # ----------------------------
-def apply_pitch_effects(players, pitch_type):
+def optimize_team(players, pitch_type="neutral"):
+    """Main optimization logic with role balancing"""
+    # Pitch multipliers
     multipliers = {
-        "batting": {"BAT": 1.2, "AR": 1.1, "BOWL": 0.8},
-        "bowling": {"BOWL": 1.3, "AR": 1.1, "BAT": 0.7},
-        "neutral": {"BAT": 1.0, "BOWL": 1.0, "AR": 1.0}
+        "batting": {"BAT": 1.2, "AR": 1.1, "WK": 1.1, "BOWL": 0.9},
+        "bowling": {"BOWL": 1.3, "AR": 1.1, "BAT": 0.8},
+        "neutral": {k: 1.0 for k in ["BAT", "BOWL", "AR", "WK"]}
     }
     
-    for player in players:
-        player["score"] *= multipliers[pitch_type].get(player["role"], 1.0)
-
-# ----------------------------
-# 4. TEAM OPTIMIZATION
-# ----------------------------
-def optimize_team(players, pitch_type):
-    # Calculate base scores
-    for player in players:
-        bat_score = (player["bat_avg"] * 0.5) + (player["strike_rate"] * 0.3)
-        bowl_score = (25 - player["bowl_avg"]) * 0.6
-        player["base_score"] = bat_score + bowl_score
-        player["score"] = player["base_score"]
-    
     # Apply pitch effects
-    apply_pitch_effects(players, pitch_type)
+    for p in players:
+        p["pitch_score"] = p["score"] * multipliers[pitch_type].get(p["role"], 1.0)
     
-    # Generate all possible teams
+    # Generate valid teams
     valid_teams = []
-    for team in combinations(players, 11):
+    all_players = [p for p in players if p["role"] != "UNK"]  # Exclude unknowns
+    
+    for team in combinations(all_players, 11):
         credits = sum(p["credits"] for p in team)
-        role_counts = {"WK": 0, "BAT": 0, "BOWL": 0, "AR": 0}
+        roles = {"WK": 0, "BAT": 0, "BOWL": 0, "AR": 0}
         
         for p in team:
-            role_counts[p["role"]] += 1
+            if p["role"] in roles:
+                roles[p["role"]] += 1
+        
+        # Validate team composition
+        if (credits <= 100 and roles["WK"] >= 1 and 
+            3 <= roles["BAT"] <= 5 and 
+            3 <= roles["BOWL"] <= 5 and 
+            1 <= roles["AR"] <= 3):
             
-        if (credits <= 100 and role_counts["WK"] >= 1 and 
-            3 <= role_counts["BAT"] <= 5 and 
-            3 <= role_counts["BOWL"] <= 5 and 
-            1 <= role_counts["AR"] <= 4):
-            
-            sorted_team = sorted(team, key=lambda x: x["score"], reverse=True)
-            total_score = sum(p["score"] for p in team)
-            total_score += sorted_team[0]["score"] * 0.5  # Captain bonus
-            total_score += sorted_team[1]["score"] * 0.25  # VC bonus
+            # Sort by score for captain selection
+            sorted_team = sorted(team, key=lambda x: x["pitch_score"], reverse=True)
+            total = sum(p["pitch_score"] for p in team)
+            total += sorted_team[0]["pitch_score"] * 0.5  # Captain bonus
+            total += sorted_team[1]["pitch_score"] * 0.25  # VC bonus
             
             valid_teams.append({
-                "players": team,
-                "total_score": total_score,
-                "captain": sorted_team[0],
-                "vice_captain": sorted_team[1]
+                "players": sorted_team,
+                "total": round(total, 1),
+                "credits": credits,
+                "captain": sorted_team[0]["name"],
+                "vc": sorted_team[1]["name"]
             })
     
-    return sorted(valid_teams, key=lambda x: x["total_score"], reverse=True)[:3]
+    return sorted(valid_teams, key=lambda x: x["total"], reverse=True)[:3]
 
 # ----------------------------
-# 5. STREAMLIT UI
+# 3. STREAMLIT UI
 # ----------------------------
-uploaded_file = st.file_uploader("Upload Playing XI Excel", type=["xlsx"])
-
-if uploaded_file:
-    players = process_data(uploaded_file)
+def main():
+    st.set_page_config(layout="wide")
+    st.title("🏏 Dream11 Team Optimizer")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        pitch_type = st.selectbox("Pitch Type", ["neutral", "batting", "bowling"])
-    with col2:
-        contest_type = st.selectbox("Contest Type", ["Small League", "Grand League"])
+    # File upload
+    uploaded_file = st.file_uploader("Upload Playing XI (Excel)", type=["xlsx"])
+    if not uploaded_file:
+        st.info("👉 Sample format: Player Name | Role | Team | Captain (Yes/No) | Wicketkeeper (Yes/No)")
+        return
     
-    if st.button("Generate Teams"):
-        with st.spinner("Optimizing teams..."):
-            top_teams = optimize_team(players, pitch_type)
-            
-            for i, team in enumerate(top_teams, 1):
-                with st.expander(f"Team #{i} | Score: {team['total_score']:.1f}"):
-                    st.markdown(f"**Captain:** {team['captain']['name']} | "
-                               f"**Vice Captain:** {team['vice_captain']['name']}")
-                    
-                    df = pd.DataFrame([
-                        {
+    # Process data
+    try:
+        df = pd.read_excel(uploaded_file)
+        if not all(col in df.columns for col in ["Player Name", "Role", "Team"]):
+            st.error("❌ Missing required columns: Player Name, Role, Team")
+            return
+        
+        # Convert to player dicts
+        players = []
+        for _, row in df.iterrows():
+            players.append({
+                "name": row["Player Name"],
+                "role": classify_role(row["Role"]),
+                "team": row["Team"],
+                "is_captain": row.get("Captain", "") == "Yes",
+                "is_wk": row.get("Wicketkeeper", "") == "Yes"
+            })
+        
+        # Generate mock stats
+        calculate_scores(players)
+        
+        # User inputs
+        col1, col2 = st.columns(2)
+        with col1:
+            pitch = st.selectbox("Pitch Type", ["neutral", "batting", "bowling"])
+        with col2:
+            contest = st.selectbox("Contest Type", ["Small League", "Grand League"])
+        
+        # Optimization trigger
+        if st.button("✨ Generate Optimal Teams", type="primary"):
+            with st.spinner("Crunching numbers..."):
+                teams = optimize_team(players, pitch)
+                
+                if not teams:
+                    st.warning("No valid teams found! Check player roles/credits.")
+                    return
+                
+                # Display results
+                for i, team in enumerate(teams, 1):
+                    with st.expander(f"Team #{i} | Score: {team['total']} | Credits: {team['credits']}"):
+                        st.markdown(f"**Captain:** {team['captain']} | **Vice Captain:** {team['vc']}")
+                        
+                        # Create display dataframe
+                        display_df = pd.DataFrame([{
                             "Player": p["name"],
                             "Role": p["role"],
                             "Team": p["team"],
                             "Credits": p["credits"],
-                            "Score": f"{p['score']:.1f}"
-                        } for p in sorted(team["players"], key=lambda x: (-x['score'], x['role']))
-                    ])
-                    st.dataframe(df, hide_index=True)
+                            "Score": round(p["pitch_score"], 1)
+                        } for p in team["players"]])
+                        
+                        st.dataframe(
+                            display_df.sort_values("Score", ascending=False),
+                            hide_index=True,
+                            use_container_width=True
+                        )
+    
+    except Exception as e:
+        st.error(f"🚨 Error: {str(e)}")
+        st.stop()
+
+if __name__ == "__main__":
+    main()
