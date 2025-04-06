@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import random
 import requests
+import itertools
 
 st.set_page_config(page_title="Dream11 Advanced Analyzer", layout="wide")
 st.title("\U0001F3CF Dream11 T20 Analyzer with Real Stats, Pitch, Roles & Credits")
-st.markdown("Upload your lineup Excel/CSV with columns: `Player Name`, `Role`, `Team`")
+st.markdown("Upload your lineup Excel/CSV with columns: `Player Name`, `Role`, `Team`, `Credits`")
 
 # Sidebar pitch type selector
 st.sidebar.header("Pitch & Ground Conditions")
@@ -40,33 +41,46 @@ selected_player = st.sidebar.text_input("Filter by Player Name (Optional)")
 def get_real_player_stats(player_name):
     api_key = "6ca645b3-5501-4459-949a-57bf971f5f1b"
     search_url = f"https://api.cricapi.com/v1/players?apikey={api_key}&search={player_name}"
-    search_res = requests.get(search_url)
-    if search_res.status_code == 200 and search_res.json().get('status') == 'success':
-        data = search_res.json().get('data', [])
-        if data and 'id' in data[0]:
-            pid = data[0]['id']
-            stats_url = f"https://api.cricapi.com/v1/player_stats?apikey={api_key}&id={pid}"
-            stats_res = requests.get(stats_url)
-            if stats_res.status_code == 200 and stats_res.json().get('status') == 'success':
-                stats = stats_res.json().get('data', {})
-                batting = stats.get('stats', {}).get('batting', {}).get('T20', {})
-                bowling = stats.get('stats', {}).get('bowling', {}).get('T20', {})
-                recent_matches = stats.get('recentMatches', [])[:5]
 
-                runs_list = [match.get('runs', 0) for match in recent_matches if 'runs' in match]
-                wickets_list = [match.get('wickets', 0) for match in recent_matches if 'wickets' in match]
+    try:
+        search_res = requests.get(search_url)
+        search_res.raise_for_status()
+        search_data = search_res.json()
 
-                avg_runs = sum(runs_list) / len(runs_list) if runs_list else 25
-                avg_wickets = sum(wickets_list) / len(wickets_list) if wickets_list else 1
+        if search_data.get('status') == 'success' and search_data.get('data'):
+            player_info = search_data['data'][0]
+            pid = player_info.get('id')
 
-                return {
-                    "Venue Avg": float(batting.get('Average', 25) or 25),
-                    "Opponent Avg": round(float(batting.get('Average', 25)) * random.uniform(0.8, 1.2), 2),
-                    "Last 5 Match Avg": round(avg_runs, 2),
-                    "Last 5 Match Wickets": round(avg_wickets, 2),
-                    "Wickets vs Opponent": round(float(bowling.get('Wickets', 0)) * random.uniform(0.8, 1.2), 2),
-                    "Wickets at Venue": round(float(bowling.get('Wickets', 0)) * random.uniform(0.9, 1.1), 2),
-                }
+            if pid:
+                stats_url = f"https://api.cricapi.com/v1/player_stats?apikey={api_key}&id={pid}"
+                stats_res = requests.get(stats_url)
+                stats_res.raise_for_status()
+                stats_data = stats_res.json()
+
+                if stats_data.get('status') == 'success':
+                    stats = stats_data.get('data', {})
+                    batting = stats.get('stats', {}).get('batting', {}).get('T20', {})
+                    bowling = stats.get('stats', {}).get('bowling', {}).get('T20', {})
+                    recent_matches = stats.get('recentMatches', [])[:5]
+
+                    runs_list = [m.get('runs', 0) for m in recent_matches if isinstance(m.get('runs', 0), (int, float))]
+                    wickets_list = [m.get('wickets', 0) for m in recent_matches if isinstance(m.get('wickets', 0), (int, float))]
+
+                    avg_runs = sum(runs_list) / len(runs_list) if runs_list else 25
+                    avg_wickets = sum(wickets_list) / len(wickets_list) if wickets_list else 1
+
+                    return {
+                        "Venue Avg": float(batting.get('Average') or 25),
+                        "Opponent Avg": round(float(batting.get('Average') or 25) * random.uniform(0.8, 1.2), 2),
+                        "Last 5 Match Avg": round(avg_runs, 2),
+                        "Last 5 Match Wickets": round(avg_wickets, 2),
+                        "Wickets vs Opponent": round(float(bowling.get('Wickets', 0)) * random.uniform(0.8, 1.2), 2),
+                        "Wickets at Venue": round(float(bowling.get('Wickets', 0)) * random.uniform(0.9, 1.1), 2),
+                    }
+
+    except Exception as e:
+        st.warning(f"Error fetching stats for {player_name}: {e}")
+
     return {
         "Venue Avg": round(random.uniform(25, 50), 2),
         "Opponent Avg": round(random.uniform(25, 50), 2),
@@ -76,121 +90,76 @@ def get_real_player_stats(player_name):
         "Wickets at Venue": round(random.uniform(0, 3), 2),
     }
 
-def fetch_player_credit(player_name):
-    return round(random.uniform(7, 11), 1)
-
-def get_pitch_advantage(role):
-    role = role.lower()
-    if pitch_type == "Batting-Friendly" and any(x in role for x in ["batter", "rounder", "keeper"]):
-        return "Great for Batting"
-    elif pitch_type == "Bowling-Friendly" and any(x in role for x in ["bowler", "rounder"]):
-        return "Likely Wicket-Taker"
-    elif pitch_type == "Spin-Friendly" and "spinner" in role:
-        return "Sharp Spinner"
-    elif pitch_type == "Balanced":
-        return "Well-Rounded"
-    return "-"
-
-def suggest_captains(team, used_captains=None):
-    sorted_team = sorted(team, key=lambda x: x['Fantasy Score (Est.)'], reverse=True)
-    for player in sorted_team:
-        if used_captains is None or player['Player'] not in used_captains:
-            captain = player['Player']
-            break
-    for player in sorted_team:
-        if player['Player'] != captain:
-            vice_captain = player['Player']
-            break
-    return captain, vice_captain
-
-def simulate_dream11_points(player):
-    score = player['Fantasy Score (Est.)']
-    if player['Role'].lower() in ['all-rounder']:
-        score *= 1.1
-    if player['Role'].lower() in ['fast bowler', 'spinner']:
-        score += random.uniform(10, 25)
-    if player['Role'].lower() in ['opening batter', 'top-order batter']:
-        score += random.uniform(5, 20)
-    return round(score, 2)
-
-def generate_team_combinations(players_df, num_combinations=5):
-    combinations = []
-    used_captains = set()
-    players = players_df.to_dict(orient='records')
-    attempts = 0
-    while len(combinations) < num_combinations and attempts < 200:
-        random.shuffle(players)
-        team = []
-        credits_used = 0
-        for player in players:
-            if len(team) < 11 and credits_used + player['Credits'] <= credits_limit:
-                team.append(player)
-                credits_used += player['Credits']
-        if len(team) == 11:
-            captain, vice_captain = suggest_captains(team, used_captains)
-            if captain not in used_captains:
-                used_captains.add(captain)
-                total_points = sum(simulate_dream11_points(p) for p in team)
-                if total_points >= 1100:
-                    combinations.append((team, credits_used, captain, vice_captain, total_points))
-        attempts += 1
-    return combinations
-
-def display_combinations(combinations):
-    for idx, (team, credits_used, captain, vice_captain, total_points) in enumerate(combinations):
-        with st.expander(f"Combination {idx+1} | Credits: {credits_used:.1f} | Est. Points: {total_points:.0f}"):
-            st.markdown(f"**Captain:** {captain}  |  **Vice-Captain:** {vice_captain}")
-            df_team = pd.DataFrame(team)
-            df_team = df_team[["Player", "Role", "Team", "Credits", "Fantasy Score (Est.)"]]
-            st.dataframe(df_team, use_container_width=True)
-
-if selected_player:
-    st.subheader(f"Performance Insights: {selected_player}")
-    details = get_real_player_stats(selected_player)
-    st.write(details)
-
 if uploaded_file:
     try:
         df = pd.read_excel(uploaded_file) if uploaded_file.name.endswith(".xlsx") else pd.read_csv(uploaded_file)
-        df.columns = df.columns.str.strip().str.lower()
-        df.rename(columns={"player name": "player", "team": "team", "role": "role"}, inplace=True)
+        df = df[df['Role'].isin(selected_roles)]
 
-        df = df[df['role'].isin(selected_roles)]
+        if selected_player:
+            df = df[df['Player Name'].str.contains(selected_player, case=False, na=False)]
 
-        enriched_data = []
-        with st.spinner("Fetching player stats. Please wait..."):
-            for _, row in df.iterrows():
-                stats = get_real_player_stats(row['player'])
-                credits = fetch_player_credit(row['player'])
+        st.subheader("Fetched Stats & Analyzed Players")
+        player_stats = []
+        for _, row in df.iterrows():
+            stats = get_real_player_stats(row['Player Name'])
+            full_data = {**row.to_dict(), **stats}
+            player_stats.append(full_data)
 
+        df_stats = pd.DataFrame(player_stats)
+        st.dataframe(df_stats)
+
+        st.subheader("Suggested Team Combinations")
+        combinations = list(itertools.combinations(df_stats.to_dict('records'), 11))
+        final_teams = []
+        used_captains = set()
+
+        for team in combinations:
+            total_score = 0
+            total_credits = sum([p.get('Credits', 9.0) for p in team])
+            team_roles = {r: 0 for r in available_roles}
+
+            for p in team:
                 if use_role_based_scoring:
-                    score = (stats['Last 5 Match Avg'] * 1.2 +
-                             stats['Opponent Avg'] * 1.1 +
-                             stats['Venue Avg'] +
-                             stats['Wickets at Venue'] * 25 +
-                             stats['Wickets vs Opponent'] * 25)
+                    if "Batter" in p['Role']:
+                        total_score += p['Venue Avg'] + p['Opponent Avg'] + p['Last 5 Match Avg']
+                    elif "Bowler" in p['Role']:
+                        total_score += p['Last 5 Match Wickets'] * 25 + p['Wickets vs Opponent'] * 10
+                    elif "All-rounder" in p['Role']:
+                        total_score += (p['Last 5 Match Avg'] * 1.2 + p['Last 5 Match Wickets'] * 20)
+                    elif "Wicketkeeper" in p['Role']:
+                        total_score += (p['Last 5 Match Avg'] + 20)
                 else:
-                    score = (stats['Last 5 Match Avg'] +
-                             stats['Opponent Avg'] +
-                             stats['Venue Avg'] +
-                             stats['Last 5 Match Wickets'] * 20)
+                    total_score += p['Venue Avg'] + p['Opponent Avg'] + p['Last 5 Match Avg'] + p['Last 5 Match Wickets']
 
-                enriched_data.append({
-                    "Player": row['player'],
-                    "Role": row['role'],
-                    "Team": row['team'],
-                    "Credits": credits,
-                    "Pitch Impact": get_pitch_advantage(row['role']),
-                    "Fantasy Score (Est.)": round(score, 2)
-                })
+                if p['Role'] in team_roles:
+                    team_roles[p['Role']] += 1
 
-        enriched_df = pd.DataFrame(enriched_data)
-        st.subheader("\U0001F4CA Enriched Player Data")
-        st.dataframe(enriched_df, use_container_width=True)
+            if sum(team_roles.values()) == 11 and total_credits <= credits_limit:
+                sorted_team = sorted(team, key=lambda x: x['Last 5 Match Avg'] + x['Last 5 Match Wickets'] * 10, reverse=True)
+                captain = sorted_team[0]
+                vice_captain = sorted_team[1] if sorted_team[1]['Player Name'] != captain['Player Name'] else sorted_team[2]
 
-        st.subheader("\U0001F9F0 Dream11 Team Combinations (1100+ Points Targets)")
-        team_combos = generate_team_combinations(enriched_df, num_combinations=5)
-        display_combinations(team_combos)
+                if captain['Player Name'] not in used_captains:
+                    used_captains.add(captain['Player Name'])
+                    final_teams.append({
+                        "Team Players": [p['Player Name'] for p in sorted_team],
+                        "Captain": captain['Player Name'],
+                        "Vice-Captain": vice_captain['Player Name'],
+                        "Expected Points": round(total_score, 2),
+                        "Credits Used": round(total_credits, 2)
+                    })
+
+        top_teams = sorted(final_teams, key=lambda x: x['Expected Points'], reverse=True)[:5]
+        for i, team in enumerate(top_teams, 1):
+            st.markdown(f"### Combo {i} - Expected Points: {team['Expected Points']} - Credits Used: {team['Credits Used']}")
+            st.write("Captain:", team['Captain'])
+            st.write("Vice-Captain:", team['Vice-Captain'])
+            st.write("Team:", ", ".join(team['Team Players']))
+
+        if top_teams:
+            export_df = pd.DataFrame(top_teams)
+            csv_data = export_df.to_csv(index=False).encode('utf-8')
+            st.download_button("\U0001F4BE Download Team Combos as CSV", data=csv_data, file_name="dream11_combinations.csv", mime='text/csv')
 
     except Exception as e:
-        st.error(f"⚠️ Error processing file: {e}")
+        st.error(f"Error processing file: {e}")
