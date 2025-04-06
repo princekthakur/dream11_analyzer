@@ -34,7 +34,8 @@ credits_limit = st.sidebar.slider("Max Team Credits", min_value=80.0, max_value=
 
 uploaded_file = st.file_uploader("\U0001F4E4 Upload Excel or CSV file", type=["xlsx", "csv"])
 
-# Real API call to CricAPI
+selected_player = st.sidebar.text_input("Filter by Player Name (Optional)")
+
 @st.cache_data(show_spinner=False)
 def get_real_player_stats(player_name):
     api_key = "6ca645b3-5501-4459-949a-57bf971f5f1b"
@@ -75,11 +76,9 @@ def get_real_player_stats(player_name):
         "Wickets at Venue": round(random.uniform(0, 3), 2),
     }
 
-# Fetch credit value from a mock API (simulated)
 def fetch_player_credit(player_name):
     return round(random.uniform(7, 11), 1)
 
-# Pitch impact logic
 def get_pitch_advantage(role):
     role = role.lower()
     if pitch_type == "Batting-Friendly" and any(x in role for x in ["batter", "rounder", "keeper"]):
@@ -92,7 +91,17 @@ def get_pitch_advantage(role):
         return "Well-Rounded"
     return "-"
 
-# Function to generate combinations
+def suggest_captains(team, used_captains=None):
+    sorted_team = sorted(team, key=lambda x: x['Fantasy Score (Est.)'], reverse=True)
+    for player in sorted_team:
+        if used_captains is None or player['Player'] not in used_captains:
+            captain = player['Player']
+            break
+    for player in sorted_team:
+        if player['Player'] != captain:
+            vice_captain = player['Player']
+            break
+    return captain, vice_captain
 
 def generate_team_combinations(players_df, num_combinations=5):
     combinations = []
@@ -115,16 +124,61 @@ def generate_team_combinations(players_df, num_combinations=5):
         attempts += 1
     return combinations
 
-# Captain and Vice-Captain Suggestion
+def display_combinations(combinations):
+    for idx, (team, credits_used, captain, vice_captain) in enumerate(combinations):
+        with st.expander(f"Combination {idx+1} | Credits Used: {credits_used:.1f}"):
+            st.markdown(f"**Captain:** {captain}  |  **Vice-Captain:** {vice_captain}")
+            df_team = pd.DataFrame(team)
+            df_team = df_team[["Player", "Role", "Team", "Credits", "Fantasy Score (Est.)"]]
+            st.dataframe(df_team, use_container_width=True)
 
-def suggest_captains(team, used_captains=None):
-    sorted_team = sorted(team, key=lambda x: x['Fantasy Score (Est.)'], reverse=True)
-    for player in sorted_team:
-        if used_captains is None or player['Player'] not in used_captains:
-            captain = player['Player']
-            break
-    for player in sorted_team:
-        if player['Player'] != captain:
-            vice_captain = player['Player']
-            break
-    return captain, vice_captain
+if selected_player:
+    st.subheader(f"Performance Insights: {selected_player}")
+    details = get_real_player_stats(selected_player)
+    st.write(details)
+
+if uploaded_file:
+    try:
+        df = pd.read_excel(uploaded_file) if uploaded_file.name.endswith(".xlsx") else pd.read_csv(uploaded_file)
+        df.columns = df.columns.str.strip().str.lower()
+        df.rename(columns={"player name": "player", "team": "team", "role": "role"}, inplace=True)
+
+        df = df[df['role'].isin(selected_roles)]
+
+        enriched_data = []
+        with st.spinner("Fetching player stats. Please wait..."):
+            for _, row in df.iterrows():
+                stats = get_real_player_stats(row['player'])
+                credits = fetch_player_credit(row['player'])
+
+                if use_role_based_scoring:
+                    score = (stats['Last 5 Match Avg'] * 1.2 +
+                             stats['Opponent Avg'] * 1.1 +
+                             stats['Venue Avg'] +
+                             stats['Wickets at Venue'] * 25 +
+                             stats['Wickets vs Opponent'] * 25)
+                else:
+                    score = (stats['Last 5 Match Avg'] +
+                             stats['Opponent Avg'] +
+                             stats['Venue Avg'] +
+                             stats['Last 5 Match Wickets'] * 20)
+
+                enriched_data.append({
+                    "Player": row['player'],
+                    "Role": row['role'],
+                    "Team": row['team'],
+                    "Credits": credits,
+                    "Pitch Impact": get_pitch_advantage(row['role']),
+                    "Fantasy Score (Est.)": round(score, 2)
+                })
+
+        enriched_df = pd.DataFrame(enriched_data)
+        st.subheader("\U0001F4CA Enriched Player Data")
+        st.dataframe(enriched_df, use_container_width=True)
+
+        st.subheader("\U0001F9F0 Dream11 Team Combinations")
+        team_combos = generate_team_combinations(enriched_df, num_combinations=5)
+        display_combinations(team_combos)
+
+    except Exception as e:
+        st.error(f"⚠️ Error processing file: {e}")
