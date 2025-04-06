@@ -123,7 +123,8 @@ def suggest_captains(team, used_captains=None):
         if used_captains is None or player['Player'] not in used_captains:
             captain = player['Player']
             break
-    vice_captain = sorted_team[1]['Player'] if sorted_team[1]['Player'] != captain else sorted_team[2]['Player']
+    for player in sorted_team:
+        if player['Player'] != captain:
+            vice_captain = player['Player']
+            break
     return captain, vice_captain
-
-...
