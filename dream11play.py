@@ -47,7 +47,7 @@ def get_real_player_stats(player_name):
                 stats = stats_res.json().get('data', {})
                 batting = stats.get('stats', {}).get('batting', {}).get('T20', {})
                 bowling = stats.get('stats', {}).get('bowling', {}).get('T20', {})
-                recent_matches = stats.get('recentMatches', [])[:5]  # Last 5 matches
+                recent_matches = stats.get('recentMatches', [])[:5]
 
                 runs_list = [match.get('runs', 0) for match in recent_matches if 'runs' in match]
                 wickets_list = [match.get('wickets', 0) for match in recent_matches if 'wickets' in match]
@@ -90,10 +90,13 @@ def get_pitch_advantage(role):
     return "-"
 
 # Function to generate combinations
+
 def generate_team_combinations(players_df, num_combinations=5):
     combinations = []
+    used_captains = set()
     players = players_df.to_dict(orient='records')
-    for _ in range(num_combinations):
+    attempts = 0
+    while len(combinations) < num_combinations and attempts < 100:
         random.shuffle(players)
         team = []
         credits_used = 0
@@ -101,14 +104,23 @@ def generate_team_combinations(players_df, num_combinations=5):
             if len(team) < 11 and credits_used + player['Credits'] <= credits_limit:
                 team.append(player)
                 credits_used += player['Credits']
-        combinations.append((team, credits_used))
+        if len(team) == 11:
+            captain, vice_captain = suggest_captains(team, used_captains)
+            if captain not in used_captains:
+                used_captains.add(captain)
+                combinations.append((team, credits_used, captain, vice_captain))
+        attempts += 1
     return combinations
 
 # Captain and Vice-Captain Suggestion
-def suggest_captains(team):
+
+def suggest_captains(team, used_captains=None):
     sorted_team = sorted(team, key=lambda x: x['Fantasy Score (Est.)'], reverse=True)
-    captain = sorted_team[0]['Player']
-    vice_captain = sorted_team[1]['Player']
+    for player in sorted_team:
+        if used_captains is None or player['Player'] not in used_captains:
+            captain = player['Player']
+            break
+    vice_captain = sorted_team[1]['Player'] if sorted_team[1]['Player'] != captain else sorted_team[2]['Player']
     return captain, vice_captain
 
 if uploaded_file:
@@ -162,10 +174,9 @@ if uploaded_file:
             st.subheader("\U0001F3C6 Top 5 Team Combinations Within Credit Limit")
             team_combos = generate_team_combinations(result_df)
 
-            for i, (team, credits_used) in enumerate(team_combos, 1):
+            for i, (team, credits_used, captain, vice_captain) in enumerate(team_combos, 1):
                 st.markdown(f"#### Combination #{i} (Total Credits: {credits_used:.2f})")
                 combo_df = pd.DataFrame(team)
-                captain, vice_captain = suggest_captains(team)
 
                 combo_df['Captain'] = combo_df['Player'] == captain
                 combo_df['Vice-Captain'] = combo_df['Player'] == vice_captain
