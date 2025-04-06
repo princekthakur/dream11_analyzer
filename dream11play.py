@@ -103,12 +103,22 @@ def suggest_captains(team, used_captains=None):
             break
     return captain, vice_captain
 
+def simulate_dream11_points(player):
+    score = player['Fantasy Score (Est.)']
+    if player['Role'].lower() in ['all-rounder']:
+        score *= 1.1
+    if player['Role'].lower() in ['fast bowler', 'spinner']:
+        score += random.uniform(10, 25)
+    if player['Role'].lower() in ['opening batter', 'top-order batter']:
+        score += random.uniform(5, 20)
+    return round(score, 2)
+
 def generate_team_combinations(players_df, num_combinations=5):
     combinations = []
     used_captains = set()
     players = players_df.to_dict(orient='records')
     attempts = 0
-    while len(combinations) < num_combinations and attempts < 100:
+    while len(combinations) < num_combinations and attempts < 200:
         random.shuffle(players)
         team = []
         credits_used = 0
@@ -120,13 +130,15 @@ def generate_team_combinations(players_df, num_combinations=5):
             captain, vice_captain = suggest_captains(team, used_captains)
             if captain not in used_captains:
                 used_captains.add(captain)
-                combinations.append((team, credits_used, captain, vice_captain))
+                total_points = sum(simulate_dream11_points(p) for p in team)
+                if total_points >= 1100:
+                    combinations.append((team, credits_used, captain, vice_captain, total_points))
         attempts += 1
     return combinations
 
 def display_combinations(combinations):
-    for idx, (team, credits_used, captain, vice_captain) in enumerate(combinations):
-        with st.expander(f"Combination {idx+1} | Credits Used: {credits_used:.1f}"):
+    for idx, (team, credits_used, captain, vice_captain, total_points) in enumerate(combinations):
+        with st.expander(f"Combination {idx+1} | Credits: {credits_used:.1f} | Est. Points: {total_points:.0f}"):
             st.markdown(f"**Captain:** {captain}  |  **Vice-Captain:** {vice_captain}")
             df_team = pd.DataFrame(team)
             df_team = df_team[["Player", "Role", "Team", "Credits", "Fantasy Score (Est.)"]]
@@ -176,7 +188,7 @@ if uploaded_file:
         st.subheader("\U0001F4CA Enriched Player Data")
         st.dataframe(enriched_df, use_container_width=True)
 
-        st.subheader("\U0001F9F0 Dream11 Team Combinations")
+        st.subheader("\U0001F9F0 Dream11 Team Combinations (1100+ Points Targets)")
         team_combos = generate_team_combinations(enriched_df, num_combinations=5)
         display_combinations(team_combos)
 
