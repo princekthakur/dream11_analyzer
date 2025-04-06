@@ -6,33 +6,33 @@ import requests
 st.set_page_config(page_title="Dream11 Advanced Analyzer", layout="wide")
 st.title("\U0001F3CF Dream11 T20 Analyzer - Final XI Selector")
 
-# Fixed playing XI data
+# Fixed playing XI data with Why Pick column
 srh_players = [
-    {"Player Name": "Travis Head", "Team": "SRH", "Role": "Opening Batter"},
-    {"Player Name": "Abhishek Sharma", "Team": "SRH", "Role": "Opening Batter"},
-    {"Player Name": "Ishan Kishan", "Team": "SRH", "Role": "Wicketkeeper Batter"},
-    {"Player Name": "Nitish Kumar Reddy", "Team": "SRH", "Role": "Middle-order Batter"},
-    {"Player Name": "Kamindu Mendis", "Team": "SRH", "Role": "All-rounder"},
-    {"Player Name": "Heinrich Klaasen", "Team": "SRH", "Role": "Wicketkeeper Batter"},
-    {"Player Name": "Aniket Verma", "Team": "SRH", "Role": "Middle-order Batter"},
-    {"Player Name": "Pat Cummins", "Team": "SRH", "Role": "Fast Bowler"},
-    {"Player Name": "Zeeshan Ansari", "Team": "SRH", "Role": "Spinner"},
-    {"Player Name": "Jaydev Unadkat", "Team": "SRH", "Role": "Fast Bowler"},
-    {"Player Name": "Mohammed Shami", "Team": "SRH", "Role": "Fast Bowler"}
+    {"Player Name": "Travis Head", "Team": "SRH", "Role": "Opening Batter", "Why Pick": "Explosive starter, recent form"},
+    {"Player Name": "Abhishek Sharma", "Team": "SRH", "Role": "Opening Batter", "Why Pick": "Powerplay damage potential"},
+    {"Player Name": "Ishan Kishan", "Team": "SRH", "Role": "Wicketkeeper Batter", "Why Pick": "Impact + possible wicketkeeping points"},
+    {"Player Name": "Nitish Kumar Reddy", "Team": "SRH", "Role": "Middle-order Batter", "Why Pick": "Stabilizer role in middle"},
+    {"Player Name": "Kamindu Mendis", "Team": "SRH", "Role": "All-rounder", "Why Pick": "Differentiator pick"},
+    {"Player Name": "Heinrich Klaasen", "Team": "SRH", "Role": "Wicketkeeper Batter", "Why Pick": "Reliable + 360 hitter"},
+    {"Player Name": "Aniket Verma", "Team": "SRH", "Role": "Middle-order Batter", "Why Pick": "Low ownership value pick"},
+    {"Player Name": "Pat Cummins", "Team": "SRH", "Role": "Fast Bowler", "Why Pick": "Wickets in powerplay/death"},
+    {"Player Name": "Zeeshan Ansari", "Team": "SRH", "Role": "Spinner", "Why Pick": "Hidden pick for Grand League diff"},
+    {"Player Name": "Jaydev Unadkat", "Team": "SRH", "Role": "Fast Bowler", "Why Pick": "Experienced death overs option"},
+    {"Player Name": "Mohammed Shami", "Team": "SRH", "Role": "Fast Bowler", "Why Pick": "Powerplay/Death strike bowler"}
 ]
 
 gt_players = [
-    {"Player Name": "Sai Sudharsan", "Team": "GT", "Role": "Top-order Batter"},
-    {"Player Name": "Shubman Gill", "Team": "GT", "Role": "Opening Batter"},
-    {"Player Name": "Jos Buttler", "Team": "GT", "Role": "Wicketkeeper Batter"},
-    {"Player Name": "Shahrukh Khan", "Team": "GT", "Role": "Middle-order Batter"},
-    {"Player Name": "Rahul Tewatia", "Team": "GT", "Role": "All-rounder"},
-    {"Player Name": "Washington Sundar", "Team": "GT", "Role": "All-rounder"},
-    {"Player Name": "Rashid Khan", "Team": "GT", "Role": "Spinner"},
-    {"Player Name": "Ravisrinivasan Sai Kishore", "Team": "GT", "Role": "Spinner"},
-    {"Player Name": "Mohammed Siraj", "Team": "GT", "Role": "Fast Bowler"},
-    {"Player Name": "Prasidh Krishna", "Team": "GT", "Role": "Fast Bowler"},
-    {"Player Name": "Ishant Sharma", "Team": "GT", "Role": "Fast Bowler"}
+    {"Player Name": "Sai Sudharsan", "Team": "GT", "Role": "Top-order Batter", "Why Pick": "Consistent scorer at #3"},
+    {"Player Name": "Shubman Gill", "Team": "GT", "Role": "Opening Batter", "Why Pick": "Sheet anchor with big innings potential"},
+    {"Player Name": "Jos Buttler", "Team": "GT", "Role": "Wicketkeeper Batter", "Why Pick": "Explosive impact player"},
+    {"Player Name": "Shahrukh Khan", "Team": "GT", "Role": "Middle-order Batter", "Why Pick": "Quick scoring potential late"},
+    {"Player Name": "Rahul Tewatia", "Team": "GT", "Role": "All-rounder", "Why Pick": "Finisher + surprise overs"},
+    {"Player Name": "Washington Sundar", "Team": "GT", "Role": "All-rounder", "Why Pick": "Dual utility with spin and runs"},
+    {"Player Name": "Rashid Khan", "Team": "GT", "Role": "Spinner", "Why Pick": "Wickets + economy + fielding"},
+    {"Player Name": "Ravisrinivasan Sai Kishore", "Team": "GT", "Role": "Spinner", "Why Pick": "Spin-friendly pitch + value pick"},
+    {"Player Name": "Mohammed Siraj", "Team": "GT", "Role": "Fast Bowler", "Why Pick": "Early breakthroughs"},
+    {"Player Name": "Prasidh Krishna", "Team": "GT", "Role": "Fast Bowler", "Why Pick": "Death overs + bounce advantage"},
+    {"Player Name": "Ishant Sharma", "Team": "GT", "Role": "Fast Bowler", "Why Pick": "Experienced pacer"}
 ]
 
 combined_players = srh_players + gt_players
