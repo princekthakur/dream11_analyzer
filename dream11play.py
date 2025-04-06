@@ -24,24 +24,24 @@ uploaded_file = st.file_uploader("📤 Upload Excel or CSV file", type=["xlsx", 
 
 # Fetch credit value from a mock API (simulated)
 def fetch_player_credit(player_name):
-    # Placeholder: simulate credit between 7 and 11
     return round(random.uniform(7, 11), 1)
 
 # Simulate T20 stats per player
 def generate_fake_stats(role):
     return {
-        "Batting Avg": round(random.uniform(20, 60), 2) if role.lower() != "bowler" else round(random.uniform(5, 20), 2),
-        "Wickets/Match": round(random.uniform(0, 3), 2) if role.lower() != "batsman" else 0,
+        "Batting Avg": round(random.uniform(20, 60), 2) if "bowl" not in role.lower() else round(random.uniform(5, 20), 2),
+        "Wickets/Match": round(random.uniform(0, 3), 2) if "bat" not in role.lower() else 0,
         "Fielding": round(random.uniform(1, 10), 2),
     }
 
-# Tag players with pitch-based advantage
+# Pitch impact logic
 def get_pitch_advantage(role):
-    if pitch_type == "Batting-Friendly" and role.lower() in ["batsman", "wicketkeeper", "all-rounder"]:
+    role = role.lower()
+    if pitch_type == "Batting-Friendly" and any(x in role for x in ["bat", "keep", "round"]):
         return "Great for Batting"
-    elif pitch_type == "Bowling-Friendly" and role.lower() in ["bowler", "all-rounder"]:
+    elif pitch_type == "Bowling-Friendly" and any(x in role for x in ["bowl", "round"]):
         return "Likely Wicket-Taker"
-    elif pitch_type == "Spin-Friendly" and role.lower() == "bowler":
+    elif pitch_type == "Spin-Friendly" and "bowl" in role:
         return "Sharp Spinner"
     elif pitch_type == "Balanced":
         return "Well-Rounded"
@@ -56,11 +56,13 @@ if uploaded_file:
 
         required_cols = {'Player Name', 'Role', 'Team'}
         if required_cols.issubset(df.columns):
-            df['Player Name'] = df['Player Name'].astype(str)
-            df['Role'] = df['Role'].astype(str)
-            df['Team'] = df['Team'].astype(str)
+            df['Player Name'] = df['Player Name'].astype(str).str.strip()
+            df['Role'] = df['Role'].astype(str).str.strip()
+            df['Team'] = df['Team'].astype(str).str.strip()
 
             st.success("✅ File loaded successfully!")
+            st.markdown("### Raw Input Preview")
+            st.dataframe(df, use_container_width=True)
 
             # Add stats and credits
             stats = []
@@ -77,8 +79,8 @@ if uploaded_file:
 
             result_df = pd.DataFrame(stats)
 
-            # Filter by selected roles
-            result_df = result_df[result_df["Role"].isin(selected_roles)]
+            # Filter by fuzzy role match
+            result_df = result_df[result_df["Role"].str.lower().apply(lambda r: any(role.lower() in r for role in selected_roles))]
 
             result_df["Impact Score"] = (
                 result_df["Batting Avg"] * 0.4 +
