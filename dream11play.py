@@ -26,6 +26,9 @@ available_roles = [
 st.sidebar.header("Role-Based Filters")
 selected_roles = st.sidebar.multiselect("Select Roles to Include", available_roles, default=available_roles)
 
+# Scoring toggle
+use_role_based_scoring = st.sidebar.checkbox("Use Role-Based Fantasy Scoring", value=True)
+
 # Team Credits Limit
 credits_limit = st.sidebar.slider("Max Team Credits", min_value=80.0, max_value=120.0, value=100.0, step=0.5)
 
@@ -39,8 +42,8 @@ def get_real_player_stats(player_name):
     search_res = requests.get(search_url)
     if search_res.status_code == 200 and search_res.json().get('status') == 'success':
         data = search_res.json().get('data', [])
-        if data:
-            pid = data[0].get('id')
+        if data and 'id' in data[0]:
+            pid = data[0]['id']
             stats_url = f"https://api.cricapi.com/v1/player_stats?apikey={api_key}&id={pid}"
             stats_res = requests.get(stats_url)
             if stats_res.status_code == 200 and stats_res.json().get('status') == 'success':
@@ -123,80 +126,4 @@ def suggest_captains(team, used_captains=None):
     vice_captain = sorted_team[1]['Player'] if sorted_team[1]['Player'] != captain else sorted_team[2]['Player']
     return captain, vice_captain
 
-if uploaded_file:
-    try:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
-
-        required_cols = {'Player Name', 'Role', 'Team'}
-        if required_cols.issubset(df.columns):
-            df['Player Name'] = df['Player Name'].astype(str).str.strip()
-            df['Role'] = df['Role'].astype(str).str.strip()
-            df['Team'] = df['Team'].astype(str).str.strip()
-
-            st.success("✅ File loaded successfully!")
-            st.markdown("### Raw Input Preview")
-            st.dataframe(df, use_container_width=True)
-
-            stats = []
-            for _, row in df.iterrows():
-                credit = fetch_player_credit(row['Player Name'])
-                real_stats = get_real_player_stats(row['Player Name'])
-                pitch_boost = get_pitch_advantage(row['Role'])
-
-                fantasy_score = (
-                    real_stats["Last 5 Match Avg"] * 1.0 +
-                    real_stats["Wickets vs Opponent"] * 20 +
-                    real_stats["Wickets at Venue"] * 15 +
-                    real_stats["Venue Avg"] * 0.5 +
-                    real_stats["Opponent Avg"] * 0.5 +
-                    real_stats["Last 5 Match Wickets"] * 25
-                )
-
-                stats.append({
-                    "Player": row['Player Name'],
-                    "Team": row['Team'],
-                    "Role": row['Role'],
-                    "Credits": credit,
-                    **real_stats,
-                    "Fantasy Score (Est.)": round(fantasy_score, 2),
-                    "Pitch Advantage": pitch_boost
-                })
-
-            result_df = pd.DataFrame(stats)
-            result_df = result_df[result_df["Role"].isin(selected_roles)]
-
-            st.subheader(f"\U0001F4CA Player Analysis (Pitch: {pitch_type})")
-            st.dataframe(result_df.sort_values(by="Fantasy Score (Est.)", ascending=False), use_container_width=True)
-
-            st.subheader("\U0001F3C6 Top 5 Team Combinations Within Credit Limit")
-            team_combos = generate_team_combinations(result_df)
-
-            for i, (team, credits_used, captain, vice_captain) in enumerate(team_combos, 1):
-                st.markdown(f"#### Combination #{i} (Total Credits: {credits_used:.2f})")
-                combo_df = pd.DataFrame(team)
-
-                combo_df['Captain'] = combo_df['Player'] == captain
-                combo_df['Vice-Captain'] = combo_df['Player'] == vice_captain
-
-                display_cols = [
-                    "Player", "Team", "Role", "Credits", "Venue Avg",
-                    "Opponent Avg", "Last 5 Match Avg", "Last 5 Match Wickets",
-                    "Wickets vs Opponent", "Wickets at Venue", "Fantasy Score (Est.)",
-                    "Pitch Advantage", "Captain", "Vice-Captain"
-                ]
-
-                st.write(f"⭐ **Captain:** {captain}")
-                st.write(f"⭐ **Vice-Captain:** {vice_captain}")
-
-                st.dataframe(combo_df[display_cols].reset_index(drop=True), use_container_width=True)
-
-                csv = combo_df[display_cols].to_csv(index=False).encode('utf-8')
-                st.download_button(f"\U0001F4E5 Download Combo #{i} as CSV", csv, f"Combo_{i}.csv", "text/csv")
-
-        else:
-            st.error("❌ Your file must contain columns: `Player Name`, `Role`, and `Team`.")
-    except Exception as e:
-        st.error(f"❌ Error reading file: {e}")
+...
