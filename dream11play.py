@@ -1,94 +1,90 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from sklearn.ensemble import RandomForestRegressor
 from itertools import combinations
 
 # ----------------------------
-# 1. CORE FUNCTIONS
+# 1. TODAY'S PLAYING XI DATA (SRH vs GT - May 16, 2024)
 # ----------------------------
-def classify_role(role_str):
-    """Robust role classification with fallback"""
-    if pd.isna(role_str):
-        return "UNK"
+srh_gt_players = {
+    # SRH Players (with recent performance stats)
+    "Travis Head": {"team": "SRH", "role": "BAT", "last5_avg": 52.3, "sr": 175.4, "credits": 9.5},
+    "Abhishek Sharma": {"team": "SRH", "role": "AR", "last5_avg": 38.2, "sr": 160.1, "last5_wickets": 4, "credits": 8.5},
+    "Heinrich Klaasen": {"team": "SRH", "role": "WK", "last5_avg": 45.6, "sr": 182.3, "credits": 9.0},
+    "Pat Cummins": {"team": "SRH", "role": "BOWL", "last5_wickets": 9, "economy": 7.8, "credits": 8.5},
+    "Bhuvneshwar Kumar": {"team": "SRH", "role": "BOWL", "last5_wickets": 7, "economy": 8.1, "credits": 8.0},
     
-    role = str(role_str).lower()
-    if "wicket" in role:
-        return "WK"
-    elif "batter" in role or "bat" in role:
-        return "BAT"
-    elif "bowler" in role or "bowl" in role:
-        return "BOWL"
-    elif "all" in role or "rounder" in role:
-        return "AR"
-    return "UNK"
-
-def assign_credits(role):
-    """Dynamic credit assignment"""
-    return {
-        "WK": 8.5, "BAT": 8.5, 
-        "BOWL": 8.0, "AR": 9.0
-    }.get(role, 7.5)
-
-def calculate_scores(players):
-    """Generate realistic mock scores"""
-    for p in players:
-        if p["role"] == "BAT":
-            p["bat_score"] = np.random.normal(35, 10)
-            p["bowl_score"] = 0
-        elif p["role"] == "BOWL":
-            p["bowl_score"] = np.random.normal(25, 8)
-            p["bat_score"] = 0
-        else:  # AR/WK
-            p["bat_score"] = np.random.normal(25, 7)
-            p["bowl_score"] = np.random.normal(15, 5)
-        
-        p["score"] = (p["bat_score"] * 0.7) + (p["bowl_score"] * 0.5)
-        p["credits"] = assign_credits(p["role"])
+    # GT Players
+    "Shubman Gill": {"team": "GT", "role": "BAT", "last5_avg": 48.7, "sr": 145.2, "credits": 10.0},
+    "David Miller": {"team": "GT", "role": "BAT", "last5_avg": 42.1, "sr": 155.6, "credits": 9.0},
+    "Rashid Khan": {"team": "GT", "role": "BOWL", "last5_wickets": 11, "economy": 6.9, "credits": 9.5},
+    "Mohammed Shami": {"team": "GT", "role": "BOWL", "last5_wickets": 8, "economy": 7.5, "credits": 8.5}
+}
 
 # ----------------------------
-# 2. OPTIMIZATION ENGINE
+# 2. MACHINE LEARNING MODEL
 # ----------------------------
-def optimize_team(players, pitch_type="neutral"):
-    """Main optimization logic with role balancing"""
-    # Pitch multipliers
-    multipliers = {
-        "batting": {"BAT": 1.2, "AR": 1.1, "WK": 1.1, "BOWL": 0.9},
-        "bowling": {"BOWL": 1.3, "AR": 1.1, "BAT": 0.8},
-        "neutral": {k: 1.0 for k in ["BAT", "BOWL", "AR", "WK"]}
+def train_model():
+    # Mock training data (replace with real historical Dream11 data)
+    data = {
+        'avg': [45, 32, 28, 15, 50, 38],
+        'sr': [135, 125, 140, 0, 155, 120],
+        'wickets': [0, 2, 0, 12, 0, 5],
+        'economy': [0, 7.5, 0, 6.8, 0, 8.2],
+        'actual_points': [67, 72, 53, 85, 75, 68]
     }
+    df = pd.DataFrame(data)
     
-    # Apply pitch effects
-    for p in players:
-        p["pitch_score"] = p["score"] * multipliers[pitch_type].get(p["role"], 1.0)
+    X = df[['avg', 'sr', 'wickets', 'economy']]
+    y = df['actual_points']
     
-    # Generate valid teams
+    model = RandomForestRegressor(n_estimators=100)
+    model.fit(X, y)
+    return model
+
+# ----------------------------
+# 3. PREDICTION ENGINE
+# ----------------------------
+def predict_points(player_stats, model):
+    """Predict Dream11 points using ML model"""
+    if player_stats["role"] in ["BAT", "WK"]:
+        X = [[player_stats["last5_avg"], player_stats["sr"], 0, 0]]
+    else:
+        X = [[0, 0, player_stats["last5_wickets"], player_stats["economy"]]]
+    return max(10, model.predict(X)[0])  # Ensure minimum 10 points
+
+# ----------------------------
+# 4. TEAM OPTIMIZATION
+# ----------------------------
+def optimize_team(players, model):
+    player_list = []
+    for name, stats in players.items():
+        stats["name"] = name
+        stats["predicted"] = predict_points(stats, model)
+        player_list.append(stats)
+    
     valid_teams = []
-    all_players = [p for p in players if p["role"] != "UNK"]  # Exclude unknowns
-    
-    for team in combinations(all_players, 11):
+    for team in combinations(player_list, 11):
         credits = sum(p["credits"] for p in team)
-        roles = {"WK": 0, "BAT": 0, "BOWL": 0, "AR": 0}
+        roles = {"BAT": 0, "BOWL": 0, "AR": 0, "WK": 0}
         
         for p in team:
-            if p["role"] in roles:
-                roles[p["role"]] += 1
+            roles[p["role"]] += 1
         
-        # Validate team composition
         if (credits <= 100 and roles["WK"] >= 1 and 
             3 <= roles["BAT"] <= 5 and 
             3 <= roles["BOWL"] <= 5 and 
             1 <= roles["AR"] <= 3):
             
-            # Sort by score for captain selection
-            sorted_team = sorted(team, key=lambda x: x["pitch_score"], reverse=True)
-            total = sum(p["pitch_score"] for p in team)
-            total += sorted_team[0]["pitch_score"] * 0.5  # Captain bonus
-            total += sorted_team[1]["pitch_score"] * 0.25  # VC bonus
+            sorted_team = sorted(team, key=lambda x: x["predicted"], reverse=True)
+            total = sum(p["predicted"] for p in team)
+            total += sorted_team[0]["predicted"] * 0.5  # Captain
+            total += sorted_team[1]["predicted"] * 0.25  # VC
             
             valid_teams.append({
                 "players": sorted_team,
-                "total": round(total, 1),
-                "credits": credits,
+                "total": round(total),
                 "captain": sorted_team[0]["name"],
                 "vc": sorted_team[1]["name"]
             })
@@ -96,78 +92,49 @@ def optimize_team(players, pitch_type="neutral"):
     return sorted(valid_teams, key=lambda x: x["total"], reverse=True)[:3]
 
 # ----------------------------
-# 3. STREAMLIT UI
+# 5. STREAMLIT APP
 # ----------------------------
 def main():
     st.set_page_config(layout="wide")
-    st.title("🏏 Dream11 Team Optimizer")
+    st.title("🔥 SRH vs GT Dream11 Predictor (May 16)")
     
-    # File upload
-    uploaded_file = st.file_uploader("Upload Playing XI (Excel)", type=["xlsx"])
-    if not uploaded_file:
-        st.info("👉 Sample format: Player Name | Role | Team | Captain (Yes/No) | Wicketkeeper (Yes/No)")
-        return
+    # Load model
+    model = train_model()
     
-    # Process data
-    try:
-        df = pd.read_excel(uploaded_file)
-        if not all(col in df.columns for col in ["Player Name", "Role", "Team"]):
-            st.error("❌ Missing required columns: Player Name, Role, Team")
-            return
-        
-        # Convert to player dicts
-        players = []
-        for _, row in df.iterrows():
-            players.append({
-                "name": row["Player Name"],
-                "role": classify_role(row["Role"]),
-                "team": row["Team"],
-                "is_captain": row.get("Captain", "") == "Yes",
-                "is_wk": row.get("Wicketkeeper", "") == "Yes"
-            })
-        
-        # Generate mock stats
-        calculate_scores(players)
-        
-        # User inputs
-        col1, col2 = st.columns(2)
-        with col1:
-            pitch = st.selectbox("Pitch Type", ["neutral", "batting", "bowling"])
-        with col2:
-            contest = st.selectbox("Contest Type", ["Small League", "Grand League"])
-        
-        # Optimization trigger
-        if st.button("✨ Generate Optimal Teams", type="primary"):
-            with st.spinner("Crunching numbers..."):
-                teams = optimize_team(players, pitch)
-                
-                if not teams:
-                    st.warning("No valid teams found! Check player roles/credits.")
-                    return
-                
-                # Display results
-                for i, team in enumerate(teams, 1):
-                    with st.expander(f"Team #{i} | Score: {team['total']} | Credits: {team['credits']}"):
-                        st.markdown(f"**Captain:** {team['captain']} | **Vice Captain:** {team['vc']}")
-                        
-                        # Create display dataframe
-                        display_df = pd.DataFrame([{
-                            "Player": p["name"],
-                            "Role": p["role"],
-                            "Team": p["team"],
-                            "Credits": p["credits"],
-                            "Score": round(p["pitch_score"], 1)
-                        } for p in team["players"]])
-                        
-                        st.dataframe(
-                            display_df.sort_values("Score", ascending=False),
-                            hide_index=True,
-                            use_container_width=True
-                        )
+    # Pitch selector
+    pitch = st.selectbox("Pitch Condition", ["Batting Paradise", "Balanced", "Bowling Friendly"])
     
-    except Exception as e:
-        st.error(f"🚨 Error: {str(e)}")
-        st.stop()
+    if st.button("Generate Optimal Teams"):
+        with st.spinner("Predicting today's best team..."):
+            # Adjust stats based on pitch
+            for player in srh_gt_players.values():
+                if pitch == "Batting Paradise" and player["role"] in ["BAT", "AR", "WK"]:
+                    player["last5_avg"] *= 1.15
+                    player["sr"] *= 1.05
+                elif pitch == "Bowling Friendly" and player["role"] in ["BOWL", "AR"]:
+                    player["last5_wickets"] *= 1.2
+            
+            # Optimize
+            teams = optimize_team(srh_gt_players, model)
+            
+            # Display
+            for i, team in enumerate(teams, 1):
+                with st.expander(f"Team #{i} | Predicted Points: {team['total']}"):
+                    st.markdown(f"**Captain:** {team['captain']} | **Vice Captain:** {team['vc']}")
+                    
+                    df = pd.DataFrame([{
+                        "Player": p["name"],
+                        "Role": p["role"],
+                        "Team": p["team"],
+                        "Credits": p["credits"],
+                        "Predicted": p["predicted"]
+                    } for p in team["players"]])
+                    
+                    st.dataframe(
+                        df.sort_values("Predicted", ascending=False),
+                        hide_index=True,
+                        use_container_width=True
+                    )
 
 if __name__ == "__main__":
     main()
