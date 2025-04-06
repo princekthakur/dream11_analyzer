@@ -156,12 +156,22 @@ if uploaded_file:
                 combo_df = pd.DataFrame(team)
                 captain, vice_captain = suggest_captains(team)
 
+                combo_df['Captain'] = combo_df['Player'] == captain
+                combo_df['Vice-Captain'] = combo_df['Player'] == vice_captain
+
+                display_cols = [
+                    "Player", "Team", "Role", "Credits", "Venue Avg",
+                    "Opponent Avg", "Last 5 Match Avg", "Wickets vs Opponent",
+                    "Wickets at Venue", "Impact Score", "Pitch Advantage",
+                    "Captain", "Vice-Captain"
+                ]
+
                 st.write(f"⭐ **Captain:** {captain}")
                 st.write(f"⭐ **Vice-Captain:** {vice_captain}")
 
-                st.dataframe(combo_df.reset_index(drop=True), use_container_width=True)
+                st.dataframe(combo_df[display_cols].reset_index(drop=True), use_container_width=True)
 
-                csv = combo_df.to_csv(index=False).encode('utf-8')
+                csv = combo_df[display_cols].to_csv(index=False).encode('utf-8')
                 st.download_button(f"📥 Download Combo #{i} as CSV", csv, f"Combo_{i}.csv", "text/csv")
 
         else:
