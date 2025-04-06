@@ -4,96 +4,119 @@ import numpy as np
 from itertools import combinations
 
 # ----------------------------
-# 1. DATA INPUT SECTION
+# 1. SCORING LOGIC
 # ----------------------------
-def show_data_input():
-    st.sidebar.header("📥 Input Method")
-    input_method = st.sidebar.radio("Choose input:", 
-                                  ["Demo Data", "Manual Entry", "CSV Upload"])
-
-    players = {}
+def calculate_points(player):
+    """Calculate Dream11 points based on stats"""
+    if player["role"] in ["BAT", "WK"]:
+        # Batting points (runs + strike rate bonus)
+        runs_points = player["last5_avg"] * 1.0  # 1 pt per run (avg proxy)
+        sr_bonus = max(0, (player["sr"] - 120) * 0.1  # Bonus for SR > 120
+        return runs_points + sr_bonus + 10  # Base 10 pts
     
-    if input_method == "Demo Data":
-        players = {
-            "Virat Kohli": {"team": "RCB", "role": "BAT", "credits": 10.5, "last5_avg": 52, "sr": 145},
-            "Jasprit Bumrah": {"team": "MI", "role": "BOWL", "credits": 9.5, "last5_wickets": 8, "economy": 6.5}
-        }
-        st.success("Loaded demo data with 2 players")
+    elif player["role"] in ["BOWL", "AR"]:
+        # Bowling points (wickets + economy bonus)
+        wicket_points = player["last5_wickets"] * 25  # 25 pts per wicket
+        economy_bonus = (8.0 - player["economy"]) * 5  # Bonus for economy < 8
+        return wicket_points + max(0, economy_bonus) + 10  # Base 10 pts
 
-    elif input_method == "Manual Entry":
-        with st.form("player_form"):
-            cols = st.columns(4)
-            name = cols[0].text_input("Player Name")
-            role = cols[1].selectbox("Role", ["BAT", "BOWL", "AR", "WK"])
-            team = cols[2].selectbox("Team", ["SRH", "GT", "RCB", "MI", "CSK"])
-            credits = cols[3].number_input("Credits", min_value=7.0, max_value=12.0, value=8.5)
+# ----------------------------
+# 2. OPTIMIZATION ENGINE
+# ----------------------------
+def generate_teams(players, pitch_type="neutral"):
+    valid_teams = []
+    player_list = list(players.values())
+    
+    # Apply pitch effects
+    pitch_boost = {
+        "batting": {"BAT": 1.2, "WK": 1.1, "AR": 1.1},
+        "bowling": {"BOWL": 1.3, "AR": 1.2},
+        "neutral": {}
+    }
+    
+    for player in player_list:
+        player["predicted"] = calculate_points(player)
+        for role, boost in pitch_boost.get(pitch_type, {}).items():
+            if player["role"] == role:
+                player["predicted"] *= boost
+    
+    # Generate team combinations
+    for team in combinations(player_list, 11):
+        credits = sum(p["credits"] for p in team)
+        roles = {"BAT":0, "BOWL":0, "AR":0, "WK":0}
+        
+        for p in team:
+            roles[p["role"]] += 1
+        
+        # Validate team composition
+        if (credits <= 100 and roles["WK"] >= 1 and
+            3 <= roles["BAT"] <= 5 and
+            3 <= roles["BOWL"] <= 5 and
+            1 <= roles["AR"] <= 3):
             
-            if role in ["BAT", "WK", "AR"]:
-                last5_avg = st.number_input("Batting Avg (Last 5)", min_value=0.0, value=35.0)
-                sr = st.number_input("Strike Rate", min_value=0.0, value=135.0)
-            else:
-                last5_avg, sr = 0, 0
-                
-            if role in ["BOWL", "AR"]:
-                last5_wickets = st.number_input("Wickets (Last 5)", min_value=0, value=3)
-                economy = st.number_input("Economy Rate", min_value=0.0, value=7.5)
-            else:
-                last5_wickets, economy = 0, 0
-                
-            if st.form_submit_button("Add Player"):
-                players[name] = {
-                    "team": team,
-                    "role": role,
-                    "credits": credits,
-                    "last5_avg": last5_avg,
-                    "sr": sr,
-                    "last5_wickets": last5_wickets,
-                    "economy": economy
-                }
-                st.rerun()
-
-    elif input_method == "CSV Upload":
-        uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
-        if uploaded_file:
-            df = pd.read_csv(uploaded_file)
-            players = df.set_index('name').to_dict(orient='index')
+            # Add captain/VC bonuses
+            sorted_team = sorted(team, key=lambda x: x["predicted"], reverse=True)
+            total = sum(p["predicted"] for p in team)
+            total += sorted_team[0]["predicted"] * 0.5  # Captain
+            total += sorted_team[1]["predicted"] * 0.25  # Vice-captain
+            
+            valid_teams.append({
+                "players": sorted_team,
+                "total": round(total),
+                "credits": credits,
+                "captain": sorted_team[0]["name"],
+                "vc": sorted_team[1]["name"]
+            })
     
-    return players
+    return sorted(valid_teams, key=lambda x: x["total"], reverse=True)[:3]
 
 # ----------------------------
-# 2. PREDICTION ENGINE 
-# ----------------------------
-def show_prediction(players):
-    if not players:
-        st.warning("No player data! Add players first")
-        return
-    
-    st.header("🎯 Dream11 Team Generator")
-    
-    # Prediction UI
-    pitch = st.selectbox("Pitch Condition", ["Batting", "Bowling", "Neutral"])
-    if st.button("Generate Team"):
-        with st.spinner("Optimizing..."):
-            # Mock prediction (replace with real logic)
-            df = pd.DataFrame.from_dict(players, orient='index')
-            st.dataframe(
-                df.sort_values("credits", ascending=False),
-                height=500
-            )
-            st.balloons()
-
-# ----------------------------
-# 3. MAIN APP FLOW
+# 3. STREAMLIT UI
 # ----------------------------
 def main():
     st.set_page_config(layout="wide")
+    st.title("🏏 Dream11 Team Predictor")
     
-    # Get player data
-    players = show_data_input()
+    # Sample data - replace with your input method
+    players = {
+        "Virat Kohli": {
+            "name": "Virat Kohli", "team": "RCB", "role": "BAT",
+            "credits": 10.5, "last5_avg": 52, "sr": 145
+        },
+        "Jasprit Bumrah": {
+            "name": "Jasprit Bumrah", "team": "MI", "role": "BOWL",
+            "credits": 9.5, "last5_wickets": 8, "economy": 6.5
+        },
+        # Add more players...
+    }
     
-    # Show prediction if data exists
-    if players:
-        show_prediction(players)
+    # UI Controls
+    pitch = st.selectbox("Pitch Condition", ["neutral", "batting", "bowling"])
+    
+    if st.button("Generate Optimal Teams"):
+        if len(players) < 11:
+            st.error("Need at least 11 players!")
+        else:
+            with st.spinner("Calculating..."):
+                teams = generate_teams(players, pitch)
+                
+                for i, team in enumerate(teams, 1):
+                    with st.expander(f"Team #{i} | Predicted: {team['total']} pts | Credits: {team['credits']}/100"):
+                        st.markdown(f"**Captain:** {team['captain']} (+50%) | **VC:** {team['vc']} (+25%)")
+                        
+                        df = pd.DataFrame([{
+                            "Player": p["name"],
+                            "Role": p["role"],
+                            "Team": p["team"],
+                            "Credits": p["credits"],
+                            "Predicted": round(p["predicted"], 1)
+                        } for p in team["players"]])
+                        
+                        st.dataframe(
+                            df.sort_values("Predicted", ascending=False),
+                            hide_index=True,
+                            use_container_width=True
+                        )
 
 if __name__ == "__main__":
     main()
