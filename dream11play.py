@@ -4,7 +4,7 @@ import random
 import requests
 
 st.set_page_config(page_title="Dream11 Advanced Analyzer", layout="wide")
-st.title("🏏 Dream11 T20 Analyzer with Real Stats, Pitch, Roles & Credits")
+st.title("\U0001F3CF Dream11 T20 Analyzer with Real Stats, Pitch, Roles & Credits")
 st.markdown("Upload your lineup Excel/CSV with columns: `Player Name`, `Role`, `Team`")
 
 # Sidebar pitch type selector
@@ -29,7 +29,7 @@ selected_roles = st.sidebar.multiselect("Select Roles to Include", available_rol
 # Team Credits Limit
 credits_limit = st.sidebar.slider("Max Team Credits", min_value=80.0, max_value=120.0, value=100.0, step=0.5)
 
-uploaded_file = st.file_uploader("📤 Upload Excel or CSV file", type=["xlsx", "csv"])
+uploaded_file = st.file_uploader("\U0001F4E4 Upload Excel or CSV file", type=["xlsx", "csv"])
 
 # Real API call to CricAPI
 @st.cache_data(show_spinner=False)
@@ -45,19 +45,29 @@ def get_real_player_stats(player_name):
             stats_res = requests.get(stats_url)
             if stats_res.status_code == 200 and stats_res.json().get('status') == 'success':
                 stats = stats_res.json().get('data', {})
-                batting_avg = float(stats.get('stats', {}).get('batting', {}).get('T20', {}).get('Average', 25) or 25)
-                wickets = float(stats.get('stats', {}).get('bowling', {}).get('T20', {}).get('Wickets', 0) or 0)
+                batting = stats.get('stats', {}).get('batting', {}).get('T20', {})
+                bowling = stats.get('stats', {}).get('bowling', {}).get('T20', {})
+                recent_matches = stats.get('recentMatches', [])[:5]  # Last 5 matches
+
+                runs_list = [match.get('runs', 0) for match in recent_matches if 'runs' in match]
+                wickets_list = [match.get('wickets', 0) for match in recent_matches if 'wickets' in match]
+
+                avg_runs = sum(runs_list) / len(runs_list) if runs_list else 25
+                avg_wickets = sum(wickets_list) / len(wickets_list) if wickets_list else 1
+
                 return {
-                    "Venue Avg": round(batting_avg, 2),
-                    "Opponent Avg": round(batting_avg * random.uniform(0.8, 1.2), 2),
-                    "Last 5 Match Avg": round(batting_avg * random.uniform(0.9, 1.1), 2),
-                    "Wickets vs Opponent": round(wickets * random.uniform(0.8, 1.2), 2),
-                    "Wickets at Venue": round(wickets * random.uniform(0.9, 1.1), 2),
+                    "Venue Avg": float(batting.get('Average', 25) or 25),
+                    "Opponent Avg": round(float(batting.get('Average', 25)) * random.uniform(0.8, 1.2), 2),
+                    "Last 5 Match Avg": round(avg_runs, 2),
+                    "Last 5 Match Wickets": round(avg_wickets, 2),
+                    "Wickets vs Opponent": round(float(bowling.get('Wickets', 0)) * random.uniform(0.8, 1.2), 2),
+                    "Wickets at Venue": round(float(bowling.get('Wickets', 0)) * random.uniform(0.9, 1.1), 2),
                 }
     return {
         "Venue Avg": round(random.uniform(25, 50), 2),
         "Opponent Avg": round(random.uniform(25, 50), 2),
         "Last 5 Match Avg": round(random.uniform(20, 60), 2),
+        "Last 5 Match Wickets": round(random.uniform(0, 3), 2),
         "Wickets vs Opponent": round(random.uniform(0, 3), 2),
         "Wickets at Venue": round(random.uniform(0, 3), 2),
     }
@@ -96,7 +106,7 @@ def generate_team_combinations(players_df, num_combinations=5):
 
 # Captain and Vice-Captain Suggestion
 def suggest_captains(team):
-    sorted_team = sorted(team, key=lambda x: x['Impact Score'], reverse=True)
+    sorted_team = sorted(team, key=lambda x: x['Fantasy Score (Est.)'], reverse=True)
     captain = sorted_team[0]['Player']
     vice_captain = sorted_team[1]['Player']
     return captain, vice_captain
@@ -124,12 +134,13 @@ if uploaded_file:
                 real_stats = get_real_player_stats(row['Player Name'])
                 pitch_boost = get_pitch_advantage(row['Role'])
 
-                impact = (
-                    real_stats["Last 5 Match Avg"] * 0.4 +
-                    real_stats["Wickets vs Opponent"] * 10 +
-                    real_stats["Wickets at Venue"] * 5 +
-                    real_stats["Venue Avg"] * 0.2 +
-                    real_stats["Opponent Avg"] * 0.2
+                fantasy_score = (
+                    real_stats["Last 5 Match Avg"] * 1.0 +
+                    real_stats["Wickets vs Opponent"] * 20 +
+                    real_stats["Wickets at Venue"] * 15 +
+                    real_stats["Venue Avg"] * 0.5 +
+                    real_stats["Opponent Avg"] * 0.5 +
+                    real_stats["Last 5 Match Wickets"] * 25
                 )
 
                 stats.append({
@@ -138,17 +149,17 @@ if uploaded_file:
                     "Role": row['Role'],
                     "Credits": credit,
                     **real_stats,
-                    "Impact Score": round(impact, 2),
+                    "Fantasy Score (Est.)": round(fantasy_score, 2),
                     "Pitch Advantage": pitch_boost
                 })
 
             result_df = pd.DataFrame(stats)
             result_df = result_df[result_df["Role"].isin(selected_roles)]
 
-            st.subheader(f"📊 Player Analysis (Pitch: {pitch_type})")
-            st.dataframe(result_df.sort_values(by="Impact Score", ascending=False), use_container_width=True)
+            st.subheader(f"\U0001F4CA Player Analysis (Pitch: {pitch_type})")
+            st.dataframe(result_df.sort_values(by="Fantasy Score (Est.)", ascending=False), use_container_width=True)
 
-            st.subheader("🏆 Top 5 Team Combinations Within Credit Limit")
+            st.subheader("\U0001F3C6 Top 5 Team Combinations Within Credit Limit")
             team_combos = generate_team_combinations(result_df)
 
             for i, (team, credits_used) in enumerate(team_combos, 1):
@@ -161,9 +172,9 @@ if uploaded_file:
 
                 display_cols = [
                     "Player", "Team", "Role", "Credits", "Venue Avg",
-                    "Opponent Avg", "Last 5 Match Avg", "Wickets vs Opponent",
-                    "Wickets at Venue", "Impact Score", "Pitch Advantage",
-                    "Captain", "Vice-Captain"
+                    "Opponent Avg", "Last 5 Match Avg", "Last 5 Match Wickets",
+                    "Wickets vs Opponent", "Wickets at Venue", "Fantasy Score (Est.)",
+                    "Pitch Advantage", "Captain", "Vice-Captain"
                 ]
 
                 st.write(f"⭐ **Captain:** {captain}")
@@ -172,7 +183,7 @@ if uploaded_file:
                 st.dataframe(combo_df[display_cols].reset_index(drop=True), use_container_width=True)
 
                 csv = combo_df[display_cols].to_csv(index=False).encode('utf-8')
-                st.download_button(f"📥 Download Combo #{i} as CSV", csv, f"Combo_{i}.csv", "text/csv")
+                st.download_button(f"\U0001F4E5 Download Combo #{i} as CSV", csv, f"Combo_{i}.csv", "text/csv")
 
         else:
             st.error("❌ Your file must contain columns: `Player Name`, `Role`, and `Team`.")
